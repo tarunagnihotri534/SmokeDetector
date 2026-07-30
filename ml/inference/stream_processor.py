@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import AsyncGenerator, Dict, Any, Optional, Callable, List, Tuple
 import numpy as np
 
-from .config import DEBOUNCE_FRAMES, OVERLAP_THRESH
+from .config import DEBOUNCE_FRAMES, OVERLAP_THRESH, BASE_DIR
 from .containment import match_persons_and_cigarettes
 from .detector import DualYoloDetector
 
@@ -35,10 +35,54 @@ class StreamProcessor:
         self.track_smoking_counts: Dict[int, int] = {}
         # Track previous status per track_id to detect transitions
         self.previous_statuses: Dict[int, str] = {}
+        # Latest annotated frame image for live MJPEG HTTP streaming
+        self.latest_annotated_frame: Optional[np.ndarray] = None
 
     def reset_state(self):
         self.track_smoking_counts.clear()
         self.previous_statuses.clear()
+        self.latest_annotated_frame = None
+
+    def draw_annotations(self, frame: np.ndarray, persons: List[Dict[str, Any]], cigarettes: List[Dict[str, Any]]) -> np.ndarray:
+        """Render detection bounding boxes and labels onto a frame copy."""
+        annotated = frame.copy()
+        
+        # 1. Draw cigarettes (Orange)
+        for cig in cigarettes:
+            bbox = cig.get("bbox", [])
+            if len(bbox) == 4:
+                x1, y1, x2, y2 = [int(c) for c in bbox]
+                cv2.rectangle(annotated, (x1, y1), (x2, y2), (249, 115, 22), 2)
+                conf = cig.get("confidence", 0.0)
+                label = f"cigarette {conf:.2f}"
+                cv2.putText(annotated, label, (x1, max(15, y1 - 5)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (249, 115, 22), 1)
+
+        # 2. Draw persons (Green = Safe, Orange = Smoking, Red = Violation)
+        for p in persons:
+            bbox = p.get("bbox", [])
+            if len(bbox) == 4:
+                x1, y1, x2, y2 = [int(c) for c in bbox]
+                status = p.get("status", "safe")
+                track_id = p.get("track_id", 0)
+                conf = p.get("confidence", 0.0)
+
+                if status == "violation":
+                    color = (239, 68, 68)     # Red
+                    tag = " [VIOLATION]"
+                elif status == "smoking":
+                    color = (249, 115, 22)    # Orange
+                    tag = " [SMOKING]"
+                else:
+                    color = (34, 197, 94)     # Green
+                    tag = ""
+
+                cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+                label = f"ID:{track_id} person {conf:.2f}{tag}"
+                cv2.putText(annotated, label, (x1, max(20, y1 - 8)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+        return annotated
 
     def process_single_frame(
         self,
@@ -48,6 +92,8 @@ class StreamProcessor:
         """
         Process a single image frame (numpy BGR array) and return structured payload.
         """
+        h, w = frame.shape[:2] if hasattr(frame, 'shape') else (720, 1280)
+
         # Run dual YOLO detector
         persons_raw, cigarettes_raw = self.detector.process_frame(frame, frame_idx)
 
@@ -118,6 +164,8 @@ class StreamProcessor:
         payload = {
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "camera_id": self.camera_id,
+            "frame_width": w,
+            "frame_height": h,
             "persons": processed_persons,
             "cigarettes": cigarettes_raw,
             "stats": {
@@ -127,6 +175,9 @@ class StreamProcessor:
                 "violations": violations_count
             }
         }
+
+        # Store annotated frame for live feed MJPEG output
+        self.latest_annotated_frame = self.draw_annotations(frame, processed_persons, cigarettes_raw)
 
         if snapshot_frame is not None and self.on_violation_cb is not None:
             self.on_violation_cb(payload, snapshot_frame)
@@ -145,10 +196,25 @@ class StreamProcessor:
         is_numeric = isinstance(source, int) or (isinstance(source, str) and source.isdigit())
         source_val = int(source) if is_numeric else source
 
+        if not is_numeric:
+            p = Path(str(source))
+            if not p.is_file():
+                candidates = [
+                    BASE_DIR / "backend" / "app" / str(source),
+                    BASE_DIR / "backend" / "app" / p.name,
+                    BASE_DIR / str(source),
+                    BASE_DIR / p.name
+                ]
+                for cand in candidates:
+                    if cand.is_file():
+                        source_val = str(cand)
+                        logger.info(f"Resolved video file path to: {source_val}")
+                        break
+
         try:
             cap = cv2.VideoCapture(source_val)
             if not cap.isOpened():
-                logger.error(f"Failed to open video source: {source}")
+                logger.error(f"Failed to open video source: {source_val}")
                 # Yield synthetic frame stream if source cannot be opened
                 async for mock_payload in self._mock_stream_generator(fps_target):
                     yield mock_payload
@@ -190,3 +256,4 @@ class StreamProcessor:
             payload, _ = self.process_single_frame(dummy_frame, frame_idx)
             yield payload
             await asyncio.sleep(frame_delay)
+

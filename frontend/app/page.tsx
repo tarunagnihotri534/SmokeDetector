@@ -11,7 +11,7 @@ import { startStream, stopStream, fetchViolations, ViolationRecord } from '@/lib
 
 export default function DashboardPage() {
   const { payload, isConnected, isConnecting, error } = useLiveSocket();
-  const [streamSource, setStreamSource] = useState<string>('0');
+  const [streamSource, setStreamSource] = useState<string>('6570562-hd_1080_1920_25fps.mp4');
   const [recentViolations, setRecentViolations] = useState<ViolationRecord[]>([]);
   const [isStartingStream, setIsStartingStream] = useState<boolean>(false);
 
@@ -71,8 +71,8 @@ export default function DashboardPage() {
                 onChange={(e) => setStreamSource(e.target.value)}
                 className="bg-slate-800 border border-slate-700 text-xs text-slate-200 px-3 py-1.5 rounded-lg focus:outline-none focus:border-rose-500"
               >
+                <option value="6570562-hd_1080_1920_25fps.mp4">HD Sample Video (6570562-hd_1080_1920_25fps.mp4)</option>
                 <option value="0">Webcam / Primary Input (Index 0)</option>
-                <option value="sample.mp4">Sample Video Stream (File)</option>
                 <option value="rtsp://192.168.1.100:554/stream">RTSP IP Camera Stream</option>
               </select>
             </div>

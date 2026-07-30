@@ -24,6 +24,8 @@ export interface StreamStats {
 export interface LiveFeedPayload {
   timestamp: string;
   camera_id: string;
+  frame_width?: number;
+  frame_height?: number;
   persons: PersonDetection[];
   cigarettes: CigaretteDetection[];
   stats: StreamStats;

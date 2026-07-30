@@ -20,11 +20,11 @@ class StreamManager:
         self.processor: Optional[StreamProcessor] = None
         self.running: bool = False
         self.task: Optional[asyncio.Task] = None
-        self.current_source: str = "0"
+        self.current_source: str = "6570562-hd_1080_1920_25fps.mp4"
         self.current_camera_id: str = "cam-01"
         self.latest_jpeg_frame: Optional[bytes] = None
 
-    def start_stream(self, source: str = "0", camera_id: str = "cam-01"):
+    def start_stream(self, source: str = "6570562-hd_1080_1920_25fps.mp4", camera_id: str = "cam-01"):
         self.stop_stream()
         
         self.current_source = source
@@ -98,7 +98,7 @@ def get_stream_status():
 
 
 async def mjpeg_frame_generator():
-    """Generates synthetic or live MJPEG frames for browser canvas/video display."""
+    """Generates live MJPEG frames from the stream processor for browser video display."""
     import numpy as np
 
     frame_idx = 0
@@ -114,38 +114,21 @@ async def mjpeg_frame_generator():
             await asyncio.sleep(0.5)
             continue
 
-        # Generate live frame
+        # If live processor is active and has an annotated frame, stream it
+        if stream_manager.processor and stream_manager.processor.latest_annotated_frame is not None:
+            frame_to_send = stream_manager.processor.latest_annotated_frame
+            _, encoded = cv2.imencode(".jpg", frame_to_send)
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + encoded.tobytes() + b'\r\n')
+            await asyncio.sleep(1.0 / 15.0)
+            continue
+
+        # Fallback synthetic frame while initializing
         frame_idx += 1
         img = np.zeros((720, 1280, 3), dtype=np.uint8)
-        # Background design
         cv2.rectangle(img, (0, 0), (1280, 720), (30, 30, 40), -1)
-        cv2.putText(img, f"LIVE CAMERA FEED ({stream_manager.current_camera_id})", (40, 60),
+        cv2.putText(img, f"INITIALIZING FEED ({stream_manager.current_camera_id})...", (40, 60),
                     cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
-        
-        # Simulate active person box
-        p1_x1, p1_y1, p1_x2, p1_y2 = 250, 150, 550, 600
-        p2_x1, p2_y1, p2_x2, p2_y2 = 700, 180, 1000, 620
-
-        # Person 1 (Green)
-        cv2.rectangle(img, (p1_x1, p1_y1), (p1_x2, p1_y2), (34, 197, 94), 2)
-        cv2.putText(img, "ID:1 person 0.92", (p1_x1, p1_y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (34, 197, 94), 2)
-
-        # Person 2 (Red - violation periodically)
-        is_violating = (frame_idx % 60) > 15
-        p2_color = (239, 68, 68) if is_violating else (34, 197, 94)
-        p2_text = "ID:2 person 0.88 [VIOLATION]" if is_violating else "ID:2 person 0.88"
-        cv2.rectangle(img, (p2_x1, p2_y1), (p2_x2, p2_y2), p2_color, 2)
-        cv2.putText(img, p2_text, (p2_x1, p2_y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, p2_color, 2)
-
-        if is_violating:
-            # Cigarette box inside person 2
-            c_x1, c_y1, c_x2, c_y2 = p2_x1 + 40, p2_y1 + 120, p2_x1 + 80, p2_y1 + 150
-            cv2.rectangle(img, (c_x1, c_y1), (c_x2, c_y2), (249, 115, 22), 2)
-            cv2.putText(img, "cigarette 0.79", (c_x1, c_y1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (249, 115, 22), 1)
-
         _, encoded = cv2.imencode(".jpg", img)
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + encoded.tobytes() + b'\r\n')

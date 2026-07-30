@@ -36,9 +36,9 @@ export const LiveCanvas: React.FC<LiveCanvasProps> = ({
 
     if (!payload) return;
 
-    // Assumed coordinate space from inference (default 1280x720)
-    const srcWidth = 1280;
-    const srcHeight = 720;
+    // Dynamic coordinate space from inference payload (fallback to 1280x720)
+    const srcWidth = payload?.frame_width || 1280;
+    const srcHeight = payload?.frame_height || 720;
 
     const scaleX = displayWidth / srcWidth;
     const scaleY = displayHeight / srcHeight;

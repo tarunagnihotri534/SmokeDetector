@@ -36,6 +36,7 @@ class DualYoloDetector:
         self.person_model = None
         self.cigarette_model = None
         self.using_mock_cig = False
+        self.use_predict_fallback = False
 
         self._load_models(person_model_path, cigarette_model_path)
 
@@ -80,15 +81,35 @@ class DualYoloDetector:
 
         if self.person_model is not None:
             # 1. Run Person Tracking (class 0 = person)
-            track_results = self.person_model.track(
-                source=frame,
-                persist=True,
-                tracker="bytetrack.yaml",
-                classes=[0],
-                conf=self.person_conf,
-                iou=self.iou_thresh,
-                verbose=False
-            )
+            if self.use_predict_fallback:
+                track_results = self.person_model.predict(
+                    source=frame,
+                    classes=[0],
+                    conf=self.person_conf,
+                    iou=self.iou_thresh,
+                    verbose=False
+                )
+            else:
+                try:
+                    track_results = self.person_model.track(
+                        source=frame,
+                        persist=True,
+                        tracker="bytetrack.yaml",
+                        classes=[0],
+                        conf=self.person_conf,
+                        iou=self.iou_thresh,
+                        verbose=False
+                    )
+                except Exception as e:
+                    logger.warning(f"ByteTrack tracking failed ({e}); falling back to predict()")
+                    self.use_predict_fallback = True
+                    track_results = self.person_model.predict(
+                        source=frame,
+                        classes=[0],
+                        conf=self.person_conf,
+                        iou=self.iou_thresh,
+                        verbose=False
+                    )
 
             if track_results and len(track_results) > 0 and track_results[0].boxes is not None:
                 boxes = track_results[0].boxes

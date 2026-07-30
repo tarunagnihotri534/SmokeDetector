@@ -42,8 +42,8 @@ app.add_api_websocket_route("/ws/live", websocket_live_feed_endpoint)
 def on_startup():
     logger.info("Initializing Database...")
     init_db()
-    # Auto-start default stream for out-of-the-box demo
-    streams.stream_manager.start_stream(source="0", camera_id="cam-01")
+    # Auto-start sample video stream for out-of-the-box demo
+    streams.stream_manager.start_stream(source="6570562-hd_1080_1920_25fps.mp4", camera_id="cam-01")
 
 
 @app.on_event("shutdown")

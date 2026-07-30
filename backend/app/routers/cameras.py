@@ -13,18 +13,26 @@ router = APIRouter(prefix="/api/cameras", tags=["cameras"])
 def get_cameras(db: Session = Depends(get_db)):
     cameras = db.query(Camera).all()
     if not cameras:
-        # Seed default demo camera
-        default_cam = Camera(
+        # Seed default demo cameras
+        cam1 = Camera(
             id="cam-01",
-            name="Main Entrance Cam",
+            name="Sample HD Feed (6570562)",
+            source_type="file",
+            source_url="6570562-hd_1080_1920_25fps.mp4",
+            status="active"
+        )
+        cam2 = Camera(
+            id="cam-02",
+            name="Webcam / Primary Input",
             source_type="webcam",
             source_url="0",
             status="active"
         )
-        db.add(default_cam)
+        db.add_all([cam1, cam2])
         db.commit()
-        db.refresh(default_cam)
-        cameras = [default_cam]
+        db.refresh(cam1)
+        db.refresh(cam2)
+        cameras = [cam1, cam2]
     return cameras
 
 
